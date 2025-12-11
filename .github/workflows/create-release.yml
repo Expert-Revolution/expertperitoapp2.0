@@ -29,12 +29,14 @@ on:
         type: string
 permissions:
   actions: read
+  artifact-metadata: read
 jobs:
   create-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: read
+      artifact-metadata: read
 
     steps:
       - name: Checkout repository
