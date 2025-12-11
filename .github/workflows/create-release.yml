@@ -59,7 +59,6 @@ jobs:
       - name: Download artifact from source repository
         if: env.RUN_ID != ''
         run: |
-          set -e  # Exit on error
           echo "Downloading artifact from $SOURCE_REPO (Run ID: $RUN_ID)"
 
           # Get artifact download URL
@@ -70,13 +69,15 @@ jobs:
           ARTIFACTS_JSON=$(curl -s -f \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
-            "$ARTIFACTS_URL") || {
-              echo "Error: Failed to fetch artifacts. This may be due to:"
-              echo "  - Invalid run ID"
-              echo "  - Insufficient permissions (use PAT_TOKEN for cross-repo access)"
-              echo "  - Network issues"
-              exit 1
-            }
+            "$ARTIFACTS_URL")
+
+          if [ $? -ne 0 ]; then
+            echo "Error: Failed to fetch artifacts. This may be due to:"
+            echo "  - Invalid run ID"
+            echo "  - Insufficient permissions (use PAT_TOKEN for cross-repo access)"
+            echo "  - Network issues"
+            exit 1
+          fi
 
           # Get the artifact ID for the specified artifact name
           ARTIFACT_ID=$(echo "$ARTIFACTS_JSON" | \
@@ -87,7 +88,6 @@ jobs:
             echo "Available artifacts:"
             echo "$ARTIFACTS_JSON" | jq -r '.artifacts[].name'
             echo "Skipping artifact download"
-            echo "ARTIFACTS_DOWNLOADED=false" >> $GITHUB_ENV
           else
             echo "Found artifact ID: $ARTIFACT_ID"
 
@@ -105,23 +105,21 @@ jobs:
               echo "Error: Download failed with HTTP status $HTTP_STATUS"
               echo "For cross-repository access, consider using PAT_TOKEN"
               rm -f ./artifacts/artifact.zip
-              echo "ARTIFACTS_DOWNLOADED=false" >> $GITHUB_ENV
-            else
-              # Extract the artifact
-              cd ./artifacts
-              if unzip -q artifact.zip; then
-                rm artifact.zip
-                cd ..
-                echo "Artifact downloaded and extracted successfully"
-                echo "ARTIFACTS_DOWNLOADED=true" >> $GITHUB_ENV
-              else
-                echo "Error: Failed to extract artifact"
-                cd ..
-                rm -rf ./artifacts
-                echo "ARTIFACTS_DOWNLOADED=false" >> $GITHUB_ENV
-                exit 1
-              fi
+              exit 1
             fi
+
+            # Extract the artifact
+            cd ./artifacts
+            if ! unzip -q artifact.zip; then
+              echo "Error: Failed to extract artifact"
+              cd ..
+              rm -rf ./artifacts
+              exit 1
+            fi
+            rm artifact.zip
+            cd ..
+
+            echo "Artifact downloaded and extracted successfully"
           fi
 
       - name: List downloaded artifacts
@@ -144,8 +142,7 @@ jobs:
             **Version:** ${{ env.VERSION }}
           draft: false
           prerelease: false
-          files: |
-            ./artifacts/*
+          files: ./artifacts/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: false
@@ -153,7 +150,7 @@ jobs:
       - name: Release Summary
         run: |
           echo "✅ Release created successfully!"
-          echo "Tag: $TAG"
-          echo "Version: $VERSION"
+          echo "Tag: ${{ env.TAG }}"
+          echo "Version: ${{ env.VERSION }}"
           echo "Repository: ${{ github.repository }}"
-          echo "View at: https://github.com/${{ github.repository }}/releases/tag/$TAG"
+          echo "View at: https://github.com/${{ github.repository }}/releases/tag/${{ env.TAG }}"
