@@ -27,12 +27,14 @@ on:
         description: 'Workflow run ID from source repository'
         required: false
         type: string
-
+permissions:
+  actions: read
 jobs:
   create-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
 
     steps:
       - name: Checkout repository
