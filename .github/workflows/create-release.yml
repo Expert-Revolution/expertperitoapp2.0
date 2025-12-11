@@ -71,7 +71,7 @@ jobs:
 
           # List all artifacts for this run
           ARTIFACTS_JSON=$(curl -s -f \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: token ${{ secrets.GH_PAT }}" \
             -H "Accept: application/vnd.github+json" \
             "$ARTIFACTS_URL")
 
@@ -101,7 +101,7 @@ jobs:
 
             mkdir -p ./artifacts
             HTTP_STATUS=$(curl -L -w "%{http_code}" -o ./artifacts/artifact.zip \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Authorization: token ${{ secrets.GH_PAT }}" \
               -H "Accept: application/vnd.github+json" \
               "$DOWNLOAD_URL")
 
