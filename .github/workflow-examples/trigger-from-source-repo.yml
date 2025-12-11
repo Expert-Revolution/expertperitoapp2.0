@@ -1,0 +1,72 @@
+# Example workflow for the source repository (Expert-Revolution/expertrevolution.app.periti.crossplatform.v2)
+# This workflow shows how to trigger the release creation in expertperitoapp2.0
+
+name: Create Public Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag'
+        required: true
+        type: string
+      version:
+        description: 'Release version'
+        required: true
+        type: string
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      # Your build steps here
+      # Example:
+      # - name: Build application
+      #   run: |
+      #     # Your build commands
+      #     echo "Building application..."
+      
+      # - name: Create build artifacts
+      #   run: |
+      #     # Package your build output
+      #     mkdir -p release
+      #     # Copy built files to release directory
+      
+      # Upload artifacts that will be downloaded by the public release workflow
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifact
+          path: |
+            release/*
+            # Add paths to your build artifacts here
+          retention-days: 5
+      
+      # Trigger the public release workflow in expertperitoapp2.0
+      - name: Trigger public release creation
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          repository: Expert-Revolution/expertperitoapp2.0
+          event-type: create-release
+          client-payload: |
+            {
+              "tag": "${{ github.event.release.tag_name || inputs.tag }}",
+              "version": "${{ github.event.release.name || inputs.version }}",
+              "artifact_name": "release-artifact",
+              "source_repo": "${{ github.repository }}",
+              "run_id": "${{ github.run_id }}"
+            }
+      
+      - name: Release triggered
+        run: |
+          echo "Public release workflow triggered successfully!"
+          echo "Tag: ${{ github.event.release.tag_name || inputs.tag }}"
+          echo "Version: ${{ github.event.release.name || inputs.version }}"
+          echo "Artifact will be downloaded from run: ${{ github.run_id }}"

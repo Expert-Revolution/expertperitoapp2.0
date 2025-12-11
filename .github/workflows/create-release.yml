@@ -1,0 +1,156 @@
+name: Create Public Release
+
+on:
+  repository_dispatch:
+    types: [create-release]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+      version:
+        description: 'Release version'
+        required: true
+        type: string
+      artifact_name:
+        description: 'Name of the artifact to download'
+        required: false
+        type: string
+        default: 'release-artifact'
+      source_repo:
+        description: 'Source repository (owner/repo)'
+        required: false
+        type: string
+        default: 'Expert-Revolution/expertrevolution.app.periti.crossplatform.v2'
+      run_id:
+        description: 'Workflow run ID from source repository'
+        required: false
+        type: string
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set variables from repository_dispatch
+        if: github.event_name == 'repository_dispatch'
+        run: |
+          echo "TAG=${{ github.event.client_payload.tag }}" >> $GITHUB_ENV
+          echo "VERSION=${{ github.event.client_payload.version }}" >> $GITHUB_ENV
+          echo "ARTIFACT_NAME=${{ github.event.client_payload.artifact_name || 'release-artifact' }}" >> $GITHUB_ENV
+          echo "SOURCE_REPO=${{ github.event.client_payload.source_repo || 'Expert-Revolution/expertrevolution.app.periti.crossplatform.v2' }}" >> $GITHUB_ENV
+          echo "RUN_ID=${{ github.event.client_payload.run_id }}" >> $GITHUB_ENV
+
+      - name: Set variables from workflow_dispatch
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "TAG=${{ inputs.tag }}" >> $GITHUB_ENV
+          echo "VERSION=${{ inputs.version }}" >> $GITHUB_ENV
+          echo "ARTIFACT_NAME=${{ inputs.artifact_name }}" >> $GITHUB_ENV
+          echo "SOURCE_REPO=${{ inputs.source_repo }}" >> $GITHUB_ENV
+          echo "RUN_ID=${{ inputs.run_id }}" >> $GITHUB_ENV
+
+      - name: Download artifact from source repository
+        if: env.RUN_ID != ''
+        run: |
+          echo "Downloading artifact from $SOURCE_REPO (Run ID: $RUN_ID)"
+
+          # Get artifact download URL
+          ARTIFACTS_URL="https://api.github.com/repos/$SOURCE_REPO/actions/runs/$RUN_ID/artifacts"
+          echo "Fetching artifacts from: $ARTIFACTS_URL"
+
+          # List all artifacts for this run
+          ARTIFACTS_JSON=$(curl -s -f \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "$ARTIFACTS_URL")
+
+          if [ $? -ne 0 ]; then
+            echo "Error: Failed to fetch artifacts. This may be due to:"
+            echo "  - Invalid run ID"
+            echo "  - Insufficient permissions (use PAT_TOKEN for cross-repo access)"
+            echo "  - Network issues"
+            exit 1
+          fi
+
+          # Get the artifact ID for the specified artifact name
+          ARTIFACT_ID=$(echo "$ARTIFACTS_JSON" | \
+            jq -r ".artifacts[] | select(.name==\"$ARTIFACT_NAME\") | .id")
+
+          if [ -z "$ARTIFACT_ID" ] || [ "$ARTIFACT_ID" == "null" ]; then
+            echo "Warning: Artifact '$ARTIFACT_NAME' not found"
+            echo "Available artifacts:"
+            echo "$ARTIFACTS_JSON" | jq -r '.artifacts[].name'
+            echo "Skipping artifact download"
+          else
+            echo "Found artifact ID: $ARTIFACT_ID"
+
+            # Download the artifact
+            DOWNLOAD_URL="https://api.github.com/repos/$SOURCE_REPO/actions/artifacts/$ARTIFACT_ID/zip"
+            echo "Downloading from: $DOWNLOAD_URL"
+
+            mkdir -p ./artifacts
+            HTTP_STATUS=$(curl -L -w "%{http_code}" -o ./artifacts/artifact.zip \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "$DOWNLOAD_URL")
+
+            if [ "$HTTP_STATUS" -ne 200 ]; then
+              echo "Error: Download failed with HTTP status $HTTP_STATUS"
+              echo "For cross-repository access, consider using PAT_TOKEN"
+              rm -f ./artifacts/artifact.zip
+              exit 1
+            fi
+
+            # Extract the artifact
+            cd ./artifacts
+            if ! unzip -q artifact.zip; then
+              echo "Error: Failed to extract artifact"
+              cd ..
+              rm -rf ./artifacts
+              exit 1
+            fi
+            rm artifact.zip
+            cd ..
+
+            echo "Artifact downloaded and extracted successfully"
+          fi
+
+      - name: List downloaded artifacts
+        if: env.RUN_ID != ''
+        run: |
+          echo "Downloaded artifacts:"
+          ls -R ./artifacts 2>/dev/null || echo "No artifacts found"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Release ${{ env.VERSION }}
+          body: |
+            # Release ${{ env.VERSION }}
+
+            This release was automatically created from: ${{ env.SOURCE_REPO }}
+
+            **Tag:** ${{ env.TAG }}
+            **Version:** ${{ env.VERSION }}
+          draft: false
+          prerelease: false
+          files: ./artifacts/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: false
+
+      - name: Release Summary
+        run: |
+          echo "✅ Release created successfully!"
+          echo "Tag: ${{ env.TAG }}"
+          echo "Version: ${{ env.VERSION }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "View at: https://github.com/${{ github.repository }}/releases/tag/${{ env.TAG }}"
