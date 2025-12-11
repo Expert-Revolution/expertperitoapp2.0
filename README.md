@@ -45,7 +45,7 @@ Add this step to your workflow in the source repository:
       }
 ```
 
-**Note:** You need a Personal Access Token (PAT) with `repo` scope stored as `PAT_TOKEN` secret to trigger workflows in other repositories.
+**Note:** You need a Personal Access Token (PAT) with `repo` scope stored as `PAT_TOKEN` secret to trigger workflows in other repositories. For cross-repository artifact downloads, the workflow may also need a PAT token instead of the default GITHUB_TOKEN.
 
 ### 2. Via Manual Workflow Dispatch
 
